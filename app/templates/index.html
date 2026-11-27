@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>期货跨期保证金演练</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <h1>期货跨期保证金演练台</h1>
+  <p class="subtitle">合成数据 · 同品种近月 / 远月 · 挂单、成交、撤单与保证金上限试算</p>
+</header>
+
+<main class="layout">
+  <div id="message" class="message hidden" role="alert"></div>
+
+  <!-- 1. 期初设置 -->
+  <section class="card">
+    <h2>① 账户与期初净持仓</h2>
+    <form id="setup-form" class="form-row">
+      <label>账户资金（元）
+        <input type="number" name="cash" id="setup-cash" min="0" step="1" required>
+      </label>
+      <label>近月净持仓（手，正=多 / 负=空）
+        <input type="number" name="near_position" id="setup-near" step="1" required>
+      </label>
+      <label>远月净持仓（手，正=多 / 负=空）
+        <input type="number" name="far_position" id="setup-far" step="1" required>
+      </label>
+      <button type="submit" class="btn btn-primary">应用并重置演练</button>
+    </form>
+  </section>
+
+  <!-- 2. 状态卡片 -->
+  <section class="stat-grid">
+    <div class="stat"><span class="stat-label">账户资金</span><span class="stat-value" id="stat-cash">–</span><span class="stat-unit">元</span></div>
+    <div class="stat"><span class="stat-label">当前保证金</span><span class="stat-value" id="stat-current">–</span><span class="stat-unit">元</span></div>
+    <div class="stat"><span class="stat-label">最高保证金（上限试算）</span><span class="stat-value" id="stat-max">–</span><span class="stat-unit">元</span></div>
+    <div class="stat"><span class="stat-label">资金余量（资金 − 上限）</span><span class="stat-value" id="stat-headroom">–</span><span class="stat-unit">元</span></div>
+    <div class="stat"><span class="stat-label">近月净持仓</span><span class="stat-value" id="stat-near">–</span><span class="stat-unit">手</span></div>
+    <div class="stat"><span class="stat-label">远月净持仓</span><span class="stat-value" id="stat-far">–</span><span class="stat-unit">手</span></div>
+  </section>
+
+  <div class="two-col">
+    <!-- 3. 挂单 -->
+    <section class="card">
+      <h2>② 挂单（活动挂单 <span id="active-count">0</span>/<span id="active-limit">12</span>，单笔 ≤ <span id="lot-limit">10</span> 手）</h2>
+      <form id="order-form" class="order-form">
+        <div class="form-row">
+          <label>单据类型
+            <select name="kind" id="order-kind">
+              <option value="single">单腿单（独立成交）</option>
+              <option value="spread">跨期单（一买一卖，两腿等量同步成交）</option>
+            </select>
+          </label>
+          <label id="leg-wrap">合约月
+            <select name="leg" id="order-leg">
+              <option value="near">近月</option>
+              <option value="far">远月</option>
+            </select>
+          </label>
+          <label>方向
+            <select name="direction" id="order-direction">
+              <option value="buy">买入（净持仓增加）</option>
+              <option value="sell">卖出（净持仓减少）</option>
+            </select>
+          </label>
+          <label>手数
+            <input type="number" name="lots" id="order-lots" min="1" max="10" step="1" value="1" required>
+          </label>
+        </div>
+        <p class="hint" id="order-preview"></p>
+        <div class="form-row">
+          <button type="submit" class="btn btn-primary">提交挂单（超资金自动拒单）</button>
+          <button type="button" class="btn" id="btn-trial">仅试算（不挂单）</button>
+        </div>
+      </form>
+
+      <h3>单据列表</h3>
+      <table class="table">
+        <thead>
+        <tr>
+          <th>#</th><th>类型</th><th>合约腿（每手）</th><th>方向</th>
+          <th>委托</th><th>已成交</th><th>剩余</th><th>状态</th><th>操作</th>
+        </tr>
+        </thead>
+        <tbody id="orders-tbody"></tbody>
+      </table>
+    </section>
+
+    <!-- 4. 上限试算 -->
+    <section class="card">
+      <h2>③ 最高保证金成交组合</h2>
+      <p class="hint">
+        枚举全部活动挂单从 0 手到剩余手数的成交组合（利用凸性只需检查
+        每单 0/全成交的顶点，共 <b id="combo-count">–</b> 组），取保证金最高的一组。
+      </p>
+      <div id="worst-summary" class="worst-summary"></div>
+      <table class="table">
+        <thead>
+        <tr><th>单据</th><th>合约腿</th><th>成交手数</th><th>该单剩余</th></tr>
+        </thead>
+        <tbody id="worst-tbody"></tbody>
+      </table>
+      <p class="hint" id="worst-empty" style="display:none">当前无活动挂单，上限即当前持仓保证金。</p>
+
+      <h3>操作日志</h3>
+      <ul class="logs" id="log-list"></ul>
+    </section>
+  </div>
+</main>
+
+<div id="trial-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3 id="trial-title">试算结果</h3>
+    <div id="trial-body"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="trial-close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

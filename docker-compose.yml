@@ -1,0 +1,8 @@
+services:
+  margin-drill:
+    build: .
+    image: futures-margin-drill:latest
+    container_name: futures-margin-drill
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
